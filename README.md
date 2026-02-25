@@ -32,7 +32,7 @@ This app allows users to:
 ## 📂 Project Structure
 
 ```
-├── app.py
+├── app1.py
 ├── README.md
 └── requirements.txt
 ```
