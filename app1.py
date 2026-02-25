@@ -1,79 +1,129 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
-from scipy.stats import t
+import matplotlib.pyplot as plt
 
-# ---------- Your T-Test Function ----------
-def ttest(data, mu0, alpha=0.05, alternative="two-sided"):
-    data = np.array(data)
-    n = len(data)
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
+from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.preprocessing import LabelEncoder
 
-    xbar = np.mean(data)
-    s = np.std(data, ddof=1)
+# ---------------------------------
+# App Title
+# ---------------------------------
+st.set_page_config(page_title="Naive Bayes Classifier", layout="centered")
+st.title("🧠 Naive Bayes Classifier (Scikit-Learn)")
+st.write("Upload a CSV dataset, train a Gaussian Naive Bayes model, and evaluate performance.")
 
-    se = s / np.sqrt(n)
-    t_cal = (xbar - mu0) / se
-    df = n - 1
+# ---------------------------------
+# File Upload
+# ---------------------------------
+uploaded_file = st.file_uploader("📂 Upload CSV File", type=["csv"])
 
-    if alternative == "two-sided":
-        t_crit = t.ppf(1 - alpha/2, df)
-        p_value = 2 * (1 - t.cdf(abs(t_cal), df))
-        reject = abs(t_cal) > t_crit
+if uploaded_file is not None:
 
-    elif alternative == "greater":
-        t_crit = t.ppf(1 - alpha, df)
-        p_value = 1 - t.cdf(t_cal, df)
-        reject = t_cal > t_crit
+    df = pd.read_csv(uploaded_file)
 
-    elif alternative == "less":
-        t_crit = t.ppf(alpha, df)
-        p_value = t.cdf(t_cal, df)
-        reject = t_cal < t_crit
+    st.subheader("📊 Dataset Preview")
+    st.dataframe(df.head())
 
-    return {
-        "xbar": xbar,
-        "s": s,
-        "t_cal": t_cal,
-        "df": df,
-        "p_value": p_value,
-        "decision": "Reject H0" if reject else "Fail to Reject H0"
-    }
+    # ---------------------------------
+    # Select Target Column
+    # ---------------------------------
+    target_column = st.selectbox("🎯 Select Target Column", df.columns)
 
-# ---------- Streamlit UI ----------
-st.title("📊 One Sample T-Test Calculator")
+    # ---------------------------------
+    # Encode categorical features
+    # ---------------------------------
+    df_encoded = df.copy()
+    label_encoders = {}
 
-st.write("Enter your dataset (comma separated):")
+    for col in df_encoded.columns:
+        if df_encoded[col].dtype == "object":
+            le = LabelEncoder()
+            df_encoded[col] = le.fit_transform(df_encoded[col])
+            label_encoders[col] = le
 
-data_input = st.text_area("Dataset", "10, 12, 9, 11, 13")
+    X = df_encoded.drop(columns=[target_column])
+    y = df_encoded[target_column]
 
-mu0 = st.number_input("Null Hypothesis Mean (μ₀)", value=10.0)
+    # ---------------------------------
+    # Train-Test Split
+    # ---------------------------------
+    test_size = st.slider("📊 Test Size (%)", 10, 50, 30) / 100
 
-alpha = st.selectbox("Significance Level (α)", [0.01, 0.05, 0.10], index=1)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=42
+    )
 
-alternative = st.selectbox(
-    "Alternative Hypothesis",
-    ["two-sided", "greater", "less"]
-)
+    # ---------------------------------
+    # Model Training
+    # ---------------------------------
+    model = GaussianNB()
+    model.fit(X_train, y_train)
 
-# ---------- Run Button ----------
-if st.button("Run T-Test"):
+    y_pred = model.predict(X_test)
 
-    try:
-        data = [float(x.strip()) for x in data_input.split(",")]
+    # ---------------------------------
+    # Evaluation Metrics
+    # ---------------------------------
+    acc = accuracy_score(y_test, y_pred)
+    cm = confusion_matrix(y_test, y_pred)
 
-        if len(data) < 2:
-            st.error("Dataset must contain at least 2 values.")
-        else:
-            result = ttest(data, mu0, alpha, alternative)
+    st.subheader("📈 Model Performance")
 
-            st.success("T-Test Completed!")
+    st.success(f"✅ Accuracy Score: {acc:.4f}")
 
-            st.write("### Results")
-            st.write(f"Sample Mean (x̄): {result['xbar']:.4f}")
-            st.write(f"Sample Std Dev (s): {result['s']:.4f}")
-            st.write(f"t Calculated: {result['t_cal']:.4f}")
-            st.write(f"Degrees of Freedom: {result['df']}")
-            st.write(f"p-value: {result['p_value']:.6f}")
-            st.write(f"Decision: **{result['decision']}**")
+    # ---------------------------------
+    # Confusion Matrix Heatmap
+    # ---------------------------------
+    st.write("### 🔎 Confusion Matrix")
 
-    except:
-        st.error("Invalid input. Please enter numbers separated by commas.")
+    fig_cm, ax_cm = plt.subplots()
+    im = ax_cm.imshow(cm)
+
+    ax_cm.set_xlabel("Predicted")
+    ax_cm.set_ylabel("Actual")
+    ax_cm.set_title("Confusion Matrix")
+
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax_cm.text(j, i, cm[i, j], ha="center", va="center")
+
+    st.pyplot(fig_cm)
+
+    # ---------------------------------
+    # Visualization (Only if 2 Features)
+    # ---------------------------------
+    if X.shape[1] == 2:
+        st.subheader("📊 Before vs After Classification")
+
+        # BEFORE (Actual)
+        fig1, ax1 = plt.subplots()
+        ax1.scatter(
+            X_test.iloc[:, 0],
+            X_test.iloc[:, 1],
+            c=y_test
+        )
+        ax1.set_xlabel(X.columns[0])
+        ax1.set_ylabel(X.columns[1])
+        ax1.set_title("Actual Classes")
+        st.pyplot(fig1)
+
+        # AFTER (Predicted)
+        fig2, ax2 = plt.subplots()
+        ax2.scatter(
+            X_test.iloc[:, 0],
+            X_test.iloc[:, 1],
+            c=y_pred
+        )
+        ax2.set_xlabel(X.columns[0])
+        ax2.set_ylabel(X.columns[1])
+        ax2.set_title("Predicted Classes")
+        st.pyplot(fig2)
+
+    else:
+        st.info("📌 Scatter plot available only if dataset has exactly 2 feature columns.")
+
+else:
+    st.warning("Please upload a CSV file to begin.")
